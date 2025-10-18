@@ -4,11 +4,14 @@ import os
 import zipfile
 import time
 import subprocess
+import base64
 from datetime import datetime
 from urllib.parse import urlparse
 
 BASE_URL = "http://localhost/DefaultCollection"
-AUTH_TOKEN = "<azure-devops-base64-encoded-pat>"
+AZURE_PAT = "<your-azure-devops-pat>"
+AUTH_TOKEN = base64.b64encode(f":{AZURE_PAT}".encode()).decode()
+
 GITLAB_TOKEN = "your-gitlab-token-here"
 OUTPUT_DIR = "tfvc_downloads"
 GIT_OUTPUT_DIR = "git_downloads"
@@ -18,7 +21,7 @@ CHECKMARX_BASE_URI = "https://eu-2.ast.checkmarx.net"
 CHECKMARX_AUTH_URI = "https://eu-2.iam.checkmarx.net"
 CHECKMARX_CLIENT_ID = "<client-id>"
 CHECKMARX_CLIENT_SECRET = "<client-secret"
-CHECKMARX_TENANT = "2bsecure"
+CHECKMARX_TENANT = "<tenant-name>"
 CX_CLI_PATH = "ast-cli_2.3.36_windows_x64/cx.exe"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -620,4 +623,5 @@ def main():
             time.sleep(1)
 
 if __name__ == "__main__":
+
     main()
