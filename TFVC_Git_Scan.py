@@ -11,9 +11,9 @@ from urllib.parse import urlparse
 BASE_URL = "http://localhost/DefaultCollection"
 AZURE_PAT = "<your-azure-devops-pat>"
 AUTH_TOKEN = base64.b64encode(f":{AZURE_PAT}".encode()).decode()
+OUTPUT_DIR = "tfvc_downloads"
 
 GITLAB_TOKEN = "your-gitlab-token-here"
-OUTPUT_DIR = "tfvc_downloads"
 GIT_OUTPUT_DIR = "git_downloads"
 API_VERSION = "7.2-preview"
 
@@ -625,3 +625,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
