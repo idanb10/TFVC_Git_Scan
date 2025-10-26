@@ -8,24 +8,33 @@ import base64
 from datetime import datetime
 from urllib.parse import urlparse
 
+# TFS Configuration
 BASE_URL = "http://localhost/DefaultCollection"
-AZURE_PAT = "<your-azure-devops-pat>"
+AZURE_PAT = "Azure-PAT"
 AUTH_TOKEN = base64.b64encode(f":{AZURE_PAT}".encode()).decode()
 OUTPUT_DIR = "tfvc_downloads"
-
-GITLAB_TOKEN = "your-gitlab-token-here"
-GIT_OUTPUT_DIR = "git_downloads"
 API_VERSION = "7.2-preview"
 
+# GitLab Configuration
+GITLAB_TOKEN = "your-gitlab-token-here"
+GIT_OUTPUT_DIR = "git_downloads"
+
+# Checkmarx Configuration
 CHECKMARX_BASE_URI = "https://eu-2.ast.checkmarx.net"
 CHECKMARX_AUTH_URI = "https://eu-2.iam.checkmarx.net"
-CHECKMARX_CLIENT_ID = "<client-id>"
-CHECKMARX_CLIENT_SECRET = "<client-secret"
-CHECKMARX_TENANT = "<tenant-name>"
+CHECKMARX_CLIENT_ID = "client-id"
+CHECKMARX_CLIENT_SECRET = "client-secret"
+CHECKMARX_TENANT = ""
 CX_CLI_PATH = "ast-cli_2.3.36_windows_x64/cx.exe"
+
+# Proxy
+# Format: "http://proxy-server:port" or "http://username:password@proxy-server:port". Example: "http://proxy.company.com:8080" or "http://user:pass@proxy.company.com:8080"
+PROXY_URL = ""
+
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(GIT_OUTPUT_DIR, exist_ok=True)
+
 
 headers = {
     "Authorization": f"Basic {AUTH_TOKEN}",
@@ -33,9 +42,11 @@ headers = {
 }
 
 def clear_screen():
+    """Clear the console screen"""
     os.system('cls' if os.name == 'nt' else 'clear')
 
 def show_main_menu():
+    """Display the main menu"""
     clear_screen()
     print("="*60)
     print(" DevOps Automation Script")
@@ -48,6 +59,7 @@ def show_main_menu():
     print("\n" + "="*60)
 
 def show_tfvc_menu():
+    """Display TFVC submenu"""
     print("\n" + "-"*60)
     print(" TFVC Download Options")
     print("-"*60)
@@ -57,12 +69,14 @@ def show_tfvc_menu():
     print("\n" + "-"*60)
 
 def get_projects():
+    """Get all projects in the collection"""
     url = f"{BASE_URL}/_apis/projects?api-version={API_VERSION}"
     response = requests.get(url, headers=headers)
     response.raise_for_status()
     return response.json()['value']
 
 def get_tfvc_items(project_name):
+    """Get all TFVC items recursively for a project"""
     url = f"{BASE_URL}/{project_name}/_apis/tfvc/items"
     params = {
         "scopePath": f"$/{project_name}",
@@ -74,6 +88,7 @@ def get_tfvc_items(project_name):
     return response.json()['value']
 
 def download_file(project_name, item_path):
+    """Download a single file from TFVC"""
     url = f"{BASE_URL}/{project_name}/_apis/tfvc/items"
     params = {
         "path": item_path,
@@ -84,6 +99,7 @@ def download_file(project_name, item_path):
     return response.content
 
 def format_size(size_bytes):
+    """Format bytes to human readable size"""
     for unit in ['B', 'KB', 'MB', 'GB']:
         if size_bytes < 1024.0:
             return f"{size_bytes:.2f} {unit}"
@@ -91,6 +107,7 @@ def format_size(size_bytes):
     return f"{size_bytes:.2f} TB"
 
 def download_project_as_zip(project_name):
+    """Download entire project and create a zip file"""
     print(f"\n{'='*60}")
     print(f"Project: {project_name}")
     print(f"{'='*60}")
@@ -141,6 +158,7 @@ def download_project_as_zip(project_name):
     return True
 
 def download_all_tfvc_projects():
+    """Download all TFVC projects"""
     start_time = time.time()
     
     print("\n" + "="*60)
@@ -176,6 +194,7 @@ def download_all_tfvc_projects():
     input("\nPress Enter to continue...")
 
 def download_specific_tfvc_project():
+    """Download a specific TFVC project"""
     print("\n" + "="*60)
     print("Download Specific TFVC Project")
     print("="*60)
@@ -228,6 +247,7 @@ def download_specific_tfvc_project():
     input("\nPress Enter to continue...")
 
 def handle_tfvc_option():
+    """Handle TFVC download options"""
     while True:
         clear_screen()
         print("="*60)
@@ -248,6 +268,7 @@ def handle_tfvc_option():
             time.sleep(1)
 
 def parse_git_url(url):
+    """Parse GitLab URL from browser address bar and convert to clone URL"""
     url = url.strip()
     
     url = url.rstrip('/')
@@ -270,6 +291,7 @@ def parse_git_url(url):
     return clone_url, project_name, base_url
 
 def clone_git_repo(repo_url, project_name, base_url):
+    """Clone a Git repository using git clone command"""
     print(f"\n{'='*60}")
     print(f"Repository: {project_name}")
     print(f"{'='*60}")
@@ -321,6 +343,7 @@ def clone_git_repo(repo_url, project_name, base_url):
         return False
 
 def read_git_repos_file():
+    """Read git-repos.txt and return list of URLs"""
     repos_file = "git-repos.txt"
     
     if not os.path.exists(repos_file):
@@ -343,6 +366,7 @@ def read_git_repos_file():
     return lines
 
 def handle_git_option():
+    """Handle Git repos download"""
     start_time = time.time()
     
     print("\n" + "="*60)
@@ -400,6 +424,7 @@ def handle_git_option():
     input("\nPress Enter to continue...")
 
 def get_git_branch(repo_path):
+    """Get the current branch name from a Git repository"""
     try:
         result = subprocess.run(
             ['git', '-C', repo_path, 'rev-parse', '--abbrev-ref', 'HEAD'],
@@ -415,6 +440,7 @@ def get_git_branch(repo_path):
     return 'main'
 
 def scan_with_checkmarx(source_path, project_name, source_type="folder", branch="main"):
+    """Scan a project using Checkmarx One CLI"""
     print(f"\n{'='*60}")
     print(f"Scanning: {project_name}")
     print(f"{'='*60}")
@@ -434,6 +460,10 @@ def scan_with_checkmarx(source_path, project_name, source_type="folder", branch=
         "--client-secret", CHECKMARX_CLIENT_SECRET,
         "--tenant", CHECKMARX_TENANT
     ]
+
+    if PROXY_URL:
+        cmd.extend(["--proxy", PROXY_URL])
+        print(f"🔧 Scan using proxy: {PROXY_URL}")
     
     print("\nInitiating scan...")
     
@@ -467,6 +497,7 @@ def scan_with_checkmarx(source_path, project_name, source_type="folder", branch=
         return False
 
 def validate_checkmarx_auth():
+    """Validate Checkmarx authentication"""
     print("Validating Checkmarx authentication...")
     
     cmd = [
@@ -477,6 +508,10 @@ def validate_checkmarx_auth():
         "--client-id", CHECKMARX_CLIENT_ID,
         "--client-secret", CHECKMARX_CLIENT_SECRET
     ]
+    
+    if PROXY_URL:
+        cmd.extend(["--proxy", PROXY_URL])
+        print(f"🔧 Auth validation using proxy: {PROXY_URL}")
     
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
@@ -494,6 +529,7 @@ def validate_checkmarx_auth():
         return False
 
 def handle_checkmarx_option():
+    """Handle Checkmarx scanning"""
     start_time = time.time()
     
     print("\n" + "="*60)
@@ -605,6 +641,7 @@ def handle_checkmarx_option():
     input("\nPress Enter to continue...")
 
 def main():
+    """Main execution"""
     while True:
         show_main_menu()
         choice = input("\nEnter your choice: ").strip()
@@ -623,6 +660,4 @@ def main():
             time.sleep(1)
 
 if __name__ == "__main__":
-
     main()
-
