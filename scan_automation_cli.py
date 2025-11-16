@@ -21,15 +21,16 @@ OUTPUT_DIR = "tfvc_downloads"
 API_VERSION = "7.2-preview"
 
 # GitLab Configuration
-GITLAB_TOKEN = "gitlab-token"
+GITLAB_TOKEN = "gl-token"
+GITHUB_TOKEN = "gh-token"
 GIT_OUTPUT_DIR = "git_downloads"
 
 # Checkmarx Configuration
 CHECKMARX_BASE_URI = "https://eu-2.ast.checkmarx.net"
 CHECKMARX_AUTH_URI = "https://eu-2.iam.checkmarx.net"
-CHECKMARX_CLIENT_ID = "client-id"
-CHECKMARX_CLIENT_SECRET = "client-secret"
-CHECKMARX_TENANT = "tenant-name"
+CHECKMARX_CLIENT_ID = "my-client"
+CHECKMARX_CLIENT_SECRET = "my-secret"
+CHECKMARX_TENANT = "bezeqltd"
 CX_CLI_PATH = "ast-cli_2.3.36_windows_x64/cx.exe"
 
 # Proxy
@@ -213,6 +214,43 @@ def download_specific_tfvc_project(project_name):
     
     return success
 
+def read_tfvc_projects_file(projects_file="tfvc-projects.txt"):
+    """Read tfvc-projects.txt and return list of project names"""
+    if not os.path.exists(projects_file):
+        logger.error(f"File not found: {projects_file}")
+        return None
+    
+    with open(projects_file, 'r') as f:
+        lines = [line.strip() for line in f if line.strip() and not line.strip().startswith('#')]
+    
+    if not lines:
+        logger.error(f"No project names found in {projects_file}")
+        return None
+    
+    logger.debug(f"Read {len(lines)} project names from {projects_file}")
+    return lines
+
+def download_tfvc_projects_from_file(projects_file="tfvc-projects.txt"):
+    """Download TFVC projects listed in file"""
+    logger.info("Starting TFVC download from file")
+    start_time = time.time()
+    
+    project_names = read_tfvc_projects_file(projects_file)
+    if not project_names:
+        return False
+    
+    logger.info(f"Found {len(project_names)} TFVC project(s) in file")
+    
+    success_count = 0
+    for project_name in project_names:
+        if download_project_as_zip(project_name):
+            success_count += 1
+    
+    elapsed = time.time() - start_time
+    logger.info(f"TFVC download complete: {success_count}/{len(project_names)} projects in {elapsed:.2f}s")
+    
+    return success_count > 0
+
 def parse_git_url(url):
     """Parse GitLab URL from browser address bar and convert to clone URL"""
     url = url.strip().rstrip('/')
@@ -238,24 +276,48 @@ def clone_git_repo(repo_url, project_name):
     """Clone a Git repository using git clone command"""
     logger.info(f"Cloning repository: {project_name}")
     
-    if GITLAB_TOKEN and GITLAB_TOKEN != "your-gitlab-token-here":
-        parsed = urlparse(repo_url)
-        auth_url = f"{parsed.scheme}://oauth2:{GITLAB_TOKEN}@{parsed.netloc}{parsed.path}"
+    parsed = urlparse(repo_url)
+    hostname = parsed.netloc.lower()
+    
+    if 'github.com' in hostname:
+        if GITHUB_TOKEN and GITHUB_TOKEN != "github-token":
+            # GitHub format: https://TOKEN@github.com/user/repo.git
+            auth_url = f"{parsed.scheme}://{GITHUB_TOKEN}@{parsed.netloc}{parsed.path}"
+            logger.debug(f"Using GitHub authentication for {project_name}")
+        else:
+            auth_url = repo_url
+            logger.warning("No GitHub token configured, attempting without authentication")
+    elif 'gitlab' in hostname:
+        if GITLAB_TOKEN and GITLAB_TOKEN != "gitlab-token":
+            # GitLab format: https://oauth2:TOKEN@gitlab.com/user/repo.git
+            auth_url = f"{parsed.scheme}://oauth2:{GITLAB_TOKEN}@{parsed.netloc}{parsed.path}"
+            logger.debug(f"Using GitLab authentication for {project_name}")
+        else:
+            auth_url = repo_url
+            logger.warning("No GitLab token configured, attempting without authentication")
     else:
         auth_url = repo_url
-        logger.warning("No GitLab token configured, attempting without authentication")
+        logger.warning(f"Unknown Git platform: {hostname}, attempting without authentication")
     
     target_dir = os.path.join(GIT_OUTPUT_DIR, project_name)
-    
+
     if os.path.exists(target_dir):
         logger.warning(f"Directory already exists, skipping: {target_dir}")
         return False
-    
+
+    # Set up proxy environment for GitHub
+    env = os.environ.copy()
+    if 'github.com' in hostname and PROXY_URL:
+        env['HTTP_PROXY'] = PROXY_URL
+        env['HTTPS_PROXY'] = PROXY_URL
+        logger.debug(f"Using proxy for GitHub: {PROXY_URL}")
+
     logger.debug(f"Attempting to clone branch 'main' for {project_name}")
     result = subprocess.run(
         ['git', 'clone', '--branch', 'main', '--single-branch', auth_url, target_dir],
         capture_output=True,
-        text=True
+        text=True,
+        env=env
     )
     
     if result.returncode != 0:
@@ -263,7 +325,8 @@ def clone_git_repo(repo_url, project_name):
         result = subprocess.run(
             ['git', 'clone', '--branch', 'master', '--single-branch', auth_url, target_dir],
             capture_output=True,
-            text=True
+            text=True,
+            env=env
         )
     
     if result.returncode == 0:
@@ -349,11 +412,7 @@ def validate_checkmarx_auth():
     
     cmd = [
         CX_CLI_PATH,
-        "auth", "validate",
-        "--base-uri", CHECKMARX_BASE_URI,
-        "--base-auth-uri", CHECKMARX_AUTH_URI,
-        "--client-id", CHECKMARX_CLIENT_ID,
-        "--client-secret", CHECKMARX_CLIENT_SECRET
+        "auth", "validate"
     ]
     
     if PROXY_URL:
@@ -537,14 +596,18 @@ Examples:
   # Download specific TFVC project
   %(prog)s --tfvc-project "MyProject"
   
+  # Download TFVC projects from file
+  %(prog)s --tfvc-file
+  %(prog)s --tfvc-file custom-projects.txt
+  
   # Download all Git repos from git-repos.txt
   %(prog)s --git-all
   
   # Scan all downloaded projects in Checkmarx
   %(prog)s --scan
   
-  # Download all repos and scan them
-  %(prog)s --tfvc-all --git-all --scan
+  # Download repos from both files and scan them
+  %(prog)s --tfvc-file --git-all --scan
   
   # Full workflow with cleanup
   %(prog)s --tfvc-all --git-all --scan --cleanup
@@ -558,6 +621,8 @@ Examples:
                         help='Download all TFVC projects')
     parser.add_argument('--tfvc-project', metavar='NAME',
                         help='Download specific TFVC project by name')
+    parser.add_argument('--tfvc-file', metavar='FILE', nargs='?', const='tfvc-projects.txt',
+                        help='Download TFVC projects from file (default: tfvc-projects.txt)')
     
     parser.add_argument('--git-all', action='store_true',
                         help='Download all Git repos from git-repos.txt')
@@ -585,7 +650,7 @@ Examples:
     log_level = getattr(logging, args.log_level)
     logger = setup_logging(log_level)
     
-    if not any([args.tfvc_all, args.tfvc_project, args.git_all, args.scan, args.cleanup]):
+    if not any([args.tfvc_all, args.tfvc_project, args.tfvc_file, args.git_all, args.scan, args.cleanup]):
         parser.print_help()
         sys.exit(1)
     
@@ -603,6 +668,10 @@ Examples:
     
     if args.tfvc_project:
         if not download_specific_tfvc_project(args.tfvc_project):
+            overall_success = False
+    
+    if args.tfvc_file:
+        if not download_tfvc_projects_from_file(args.tfvc_file):
             overall_success = False
     
     if args.git_all:
